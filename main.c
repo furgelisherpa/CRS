@@ -16,7 +16,7 @@
  *     - Car rental booking and tracking
  *     - Rental history and billing
  *
- * (Check line 51 & 52 for defaukt admin username and password)
+ * ( Check line 51 & 52 for defaukt admin username and password )
  *
  */
 
@@ -41,13 +41,13 @@ const char admin_user[] = "admin";
 const char admin_password[] = "admin";
 
 /* Registered users data base file */
-const char user_database[] = "data/registered_users.bin";
+const char user_database[] = "registered_users.bin";
 /* Number of recorded users within a user database */
-const char current_num_of_user[] = "data/highest_recorded_number.txt";
+const char current_num_of_user[] = "highest_recorded_number.txt";
 /* Available cars data base file*/
-const char car_database[] = "data/car_database.db";
+const char car_database[] = "car_database.db";
 /* Rental log file user for both admin and normal users*/
-const char rental_records[] = "data/rental_records.bin";
+const char rental_records[] = "rental_records.bin";
 
 struct CarModel {
   char model_name[50];
@@ -80,7 +80,6 @@ struct Rental {
   char time[20];
 };
 
-int checkIfFileIsEmpty(const char filename[]);
 void flushInputBuffer(void);
 void getInput(char str[], size_t size);
 char getch(void);
@@ -89,7 +88,7 @@ void saveHighestRecordedNumber(size_t highestNumber);
 void getPasswordInput(char str[], size_t size);
 void showUserRentals(const char username[]);
 char *generateUniqueRentalID(const char prefix[]);
-void addCar(void);
+void registerNewCars(void);
 void viewUsers(void);
 void updateUser(char usernameToFind[]);
 void removeUserByUsername(const char usernameToRemove[]);
@@ -104,7 +103,7 @@ void rentCar(struct Users user[]);
 void adminLogin(void);
 void userDashboardMenu(struct Users user[]);
 void displayMainMenu(void);
-void userLogin(struct Users loggedInUser[]);
+int userLogin(struct Users loggedInUser[]);
 
 /* Main function */
 int main(void)
@@ -136,23 +135,6 @@ int main(void)
   } while (1);
 
   return 0;
-}
-
-int checkIfFileIsEmpty(const char filename[])
-{
-  FILE *file = fopen(filename, "rb");
-  if (file == NULL) {
-    fprintf(stderr, "Error, while opening a file %s", filename);
-    return -1;
-  }
-
-  /* Check if the file is empty */
-  fseek(file, 0, SEEK_END); /* Move the file pointer to the end of the file */
-  long file_size = ftell(file); /* Get the current position, which is the file size */
-  fseek(file, 0, SEEK_SET); /* Reset the file pointer to the beginning */
-
-  fclose(file);
-  return ((file_size == 0) ? 1 : 0);
 }
 
 /* Flushes the input buffer by reading characters until a newline or EOF is encountered. */
@@ -274,28 +256,22 @@ void showUserRentals(const char username[])
 
   FILE *file = fopen(rental_records, "rb");
   if (file == NULL) {
-    fprintf(stderr, "Error opening the file : %s\n", strerror(errno));
-    return;
-  }
-
-  if (checkIfFileIsEmpty(rental_records) == -1 || checkIfFileIsEmpty(rental_records) == 1) {
     fprintf(stderr, "There is no renting transactions made yet\n");
     return;
-  } else {
-    while (fread(&record, sizeof(struct Rental), 1, file) == 1) {
-      if (username == NULL || strcmp(record.rentingUser.username, username) == 0) {
-        if (!found) {
-          printf("%-25s%-15s%-15s%-15s%-12s%-10s%-15s%-15s%-10s\n",
-                 "Time", "Renta_ID", "Username", "Model Name", "Company", "Color",
-                 "Pickup Date", "Return Date", "Total Cost");
-          found = 1;
-        }
-        printf("%-25s%-15s%-15s%-15s%-12s%-10s%-15s%-15s%-10.2lf\n",
-               record.time, record.rentalID, record.rentingUser.username,
-               record.selectedCar.model_name, record.selectedCar.company,
-               record.selectedCar.color, record.pickupDate, record.returnDate,
-               record.totalCost);
+  }
+  while (fread(&record, sizeof(struct Rental), 1, file) == 1) {
+    if (username == NULL || strcmp(record.rentingUser.username, username) == 0) {
+      if (!found) {
+        printf("%-25s%-15s%-15s%-15s%-12s%-10s%-15s%-15s%-10s\n",
+               "Time", "Renta_ID", "Username", "Model Name", "Company", "Color",
+               "Pickup Date", "Return Date", "Total Cost");
+        found = 1;
       }
+      printf("%-25s%-15s%-15s%-15s%-12s%-10s%-15s%-15s%-10.2lf\n",
+             record.time, record.rentalID, record.rentingUser.username,
+             record.selectedCar.model_name, record.selectedCar.company,
+             record.selectedCar.color, record.pickupDate, record.returnDate,
+             record.totalCost);
     }
   }
 
@@ -324,7 +300,7 @@ char *generateUniqueRentalID(const char prefix[])
 /**
  * Add a new car to the car database.
  */
-void addCar(void)
+void registerNewCars(void)
 {
   struct CarModel car;
 
@@ -354,10 +330,13 @@ void addCar(void)
   car.available_status = true; 
 
   /* Open a car database */
-  FILE *file = fopen(car_database, "ab");
+  FILE *file = fopen(car_database, "ab+");
   if (file == NULL) {
-    fprintf(stderr, "Error opening the file for writing: %s\n", strerror(errno));
-    return;
+    file = fopen(car_database, "wb");
+    if (file == NULL) {
+      fprintf(stderr, "Error opening the file for writing: %s\n", strerror(errno));
+      return;
+    }
   }
   /* Register and save a new car data into a car database */
   if (fwrite(&car, sizeof(struct CarModel), 1, file) != 1) {
@@ -379,33 +358,28 @@ void viewUsers(void)
   /* Open a user database file*/
   FILE *file = fopen(user_database, "rb");
   if (file == NULL) {
-    fprintf(stderr, "Error opening the file for reading: %s\n", strerror(errno));
+    fprintf(stderr, "Users are not registered yet\n");
     return;
   }
 
-  if (checkIfFileIsEmpty(user_database) == -1 || checkIfFileIsEmpty(user_database) == 1) {
-    fprintf(stderr, "Users are not registered yet\n");
+  struct Users user;
+  printf("╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════╗\n");
+  printf("║                                               User information                                               ║\n");
+  printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
+  printf("║ %-19s%-19s%-18s%-19s%-21s%-12s ║\n",
+         "Full Name", "Address", "Phone Number", "Email", "Username", "Password");
+  printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
+  /* Loop through user records and display them */
+  while (fread(&user, sizeof(struct Users), 1, file) == 1) {
+    if (strlen(user.fullname) > 0 || strlen(user.address) > 0 || strlen(user.number) > 0 || strlen(user.email) > 0 || strlen(user.username) > 0 || strlen(user.password) > 0) {
+      printf("║ %-19s%-19s%-18s%-19s%-21s%-12s ║\n",
+             user.fullname, user.address, user.number, user.email, user.username, user.password);
+    }
   }
-  else {
-    struct Users user;
-    printf("╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════╗\n");
-    printf("║                                               User information                                               ║\n");
-    printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
-    printf("║ %-19s%-19s%-18s%-19s%-21s%-12s ║\n",
-           "Full Name", "Address", "Phone Number", "Email", "Username", "Password");
-    printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
-    /* Loop through user records and display them */
-    while (fread(&user, sizeof(struct Users), 1, file) == 1) {
-      if (strlen(user.fullname) > 0 || strlen(user.address) > 0 || strlen(user.number) > 0 || strlen(user.email) > 0 || strlen(user.username) > 0 || strlen(user.password) > 0) {
-        printf("║ %-19s%-19s%-18s%-19s%-21s%-12s ║\n",
-               user.fullname, user.address, user.number, user.email, user.username, user.password);
-      }
-    }
-    printf("╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════╝\n");
-    /* Close a database */
-    if (fclose(file) != 0) {
-      fprintf(stderr, "Error closing the file: %s\n", strerror(errno));
-    }
+  printf("╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════╝\n");
+  /* Close a database */
+  if (fclose(file) != 0) {
+    fprintf(stderr, "Error closing the file: %s\n", strerror(errno));
   }
 }
 
@@ -485,6 +459,7 @@ void updateUser(char usernameToFind[])
   }
   flushInputBuffer();
 
+  printf("\nHere is your updated information:\n\n");
   printf("Full Name: %s\n", user.fullname);
   printf("Address: %s\n", user.address);
   printf("Contact Number: %s\n", user.number);
@@ -516,7 +491,7 @@ void removeUserByUsername(const char usernameToRemove[])
   struct Users user;
 
   /* Open a newfile for writing a userdata temporaryly */
-  FILE *tempFile = fopen("data/temp.dat", "wb");
+  FILE *tempFile = fopen("temp.dat", "wb");
   if (tempFile == NULL) {
     fprintf(stderr, "Error creating temporary file: %s\n", strerror(errno));
     fclose(file);
@@ -565,38 +540,33 @@ void viewCars(void)
   /* Open the car database */
   FILE *file = fopen(car_database, "rb");
   if (file == NULL) {
-    fprintf(stderr, "Error opening the file for reading: %s\n", strerror(errno));
+    fprintf(stderr, "Cars are not available at the moment\n");
     return;
   }
 
-  if (checkIfFileIsEmpty(car_database) == -1 || checkIfFileIsEmpty(car_database) == 1 ) {
-    fprintf(stderr, "Cars are not available at the moment\nMight be went to garage or service center\nPlease visit later!\n");
+  struct CarModel car;
+  printf("\n╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗\n");
+  printf("║                                                     Available Car Models                                                     ║\n");
+  printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
+  printf("║ %-15s%-15s%-12s%-19s%-20s%-12s%-17s%-14s ║\n",
+         "Model Name", "Company", "Year", "Passenger Cap.", "Fuel Efficiency", "Color", "Rate (NPR)", "Status");
+  printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
+  /* Read and display cars with a availability status */
+  while (fread(&car, sizeof(struct CarModel), 1, file) == 1) {
+    printf("║ %-15s%-15s%-12zu%-19zu%-20.2lf%-12s%-16.2lf %-15s║\n",
+           car.model_name,
+           car.company,
+           car.year,
+           car.passenger_capacity,
+           car.fuel_efficiency,
+           car.color,
+           car.rental_rate,
+           car.available_status ? "Available" : "Not Available");
   }
-  else {
-    struct CarModel car;
-    printf("\n╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗\n");
-    printf("║                                                     Available Car Models                                                     ║\n");
-    printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
-    printf("║ %-15s%-15s%-12s%-19s%-20s%-12s%-17s%-14s ║\n",
-           "Model Name", "Company", "Year", "Passenger Cap.", "Fuel Efficiency", "Color", "Rate (NPR)", "Status");
-    printf("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣\n");
-    /* Read and display cars with a availability status */
-    while (fread(&car, sizeof(struct CarModel), 1, file) == 1) {
-      printf("║ %-15s%-15s%-12zu%-19zu%-20.2lf%-12s%-16.2lf %-15s║\n",
-             car.model_name,
-             car.company,
-             car.year,
-             car.passenger_capacity,
-             car.fuel_efficiency,
-             car.color,
-             car.rental_rate,
-             car.available_status ? "Available" : "Not Available");
-    }
-    printf("╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
-    /* Close a database */
-    if (fclose(file) != 0) {
-      fprintf(stderr, "Error closing the file: %s\n", strerror(errno));
-    }
+  printf("╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
+  /* Close a database */
+  if (fclose(file) != 0) {
+    fprintf(stderr, "Error closing the file: %s\n", strerror(errno));
   }
 }
 
@@ -778,7 +748,7 @@ void removeCarModelByName(void)
   fclose(tempFile);
 
   remove(car_database);     /* Delete the original file */
-  if (rename("data/temp.dat", car_database) != 0) {
+  if (rename("temp.dat", car_database) != 0) {
     fprintf(stderr, "Error renaming the temporary file: %s\n", strerror(errno));
     return;
   }
@@ -929,8 +899,7 @@ void registerNewUsers(void)
 {
   char choice[4];
   struct Users newUser[MAX_USERS];
-  size_t numUsers =
-      loadHighestRecordedNumber(); /* Start from the highest recorded number */
+  size_t numUsers = loadHighestRecordedNumber(); /* Start from the highest recorded number */
 
   /* Open the user database file for reading and appending */
   FILE *userDatabaseFile = fopen(user_database, "ab+");
@@ -1011,7 +980,7 @@ void adminDashboard(void)
               removeCarModelByName();
               break;
             case 3:
-              addCar();
+              registerNewCars();
               break;
             case 4:
               break;
@@ -1036,12 +1005,14 @@ void adminDashboard(void)
           flushInputBuffer();
           switch (choice) {
             case 1:
+              viewUsers();
               printf("\nEnter the username to update : ");
               scanf("%s", username);
               flushInputBuffer();
               updateUser(username);
               break;
             case 2:
+              viewUsers();
               printf("\nEnter the username to remove : ");
               scanf("%s", username);
               flushInputBuffer();
@@ -1069,29 +1040,24 @@ void adminDashboard(void)
           strcmp(user_log_menu_choice, "Yes") == 0 ||
           strcmp(user_log_menu_choice, "YES") == 0) {
 
-          if (checkIfFileIsEmpty(user_database) == -1 || checkIfFileIsEmpty(user_database) == 1) {
+          FILE *file = fopen(user_database, "rb");
+          if (file == NULL) {
             fprintf(stderr, "There is no user registered yet.\n");
-          } else {
-
-            FILE *file = fopen(user_database, "rb");
-            if (file == NULL) {
-              fprintf(stderr, "Error, while opening a file");
-              return;
-            }
-
-            struct Users user;
-            int i = 0;
-            printf("List of registered users : \n");
-            while (fread(&user, sizeof(struct Users), 1, file) == 1) {
-              i++;
-              fprintf(stdout, "%d) %s\n", i, user.username);
-            }
-            fclose(file);
-
-            printf("Enter the specific user's username : ");
-            scanf("%s", log_username);
-            showUserRentals(log_username);
+            return;
           }
+
+          struct Users user;
+          int i = 0;
+          printf("List of registered users : \n");
+          while (fread(&user, sizeof(struct Users), 1, file) == 1) {
+            i++;
+            fprintf(stdout, "%d) %s\n", i, user.username);
+          }
+          fclose(file);
+
+          printf("Enter the specific user's username : ");
+          scanf("%s", log_username);
+          showUserRentals(log_username);
         } else
         showUserRentals(NULL);
       } break;
@@ -1377,7 +1343,7 @@ void displayMainMenu(void)
   printf("3. Exit\n");
 }
 
-void userLogin(struct Users loggedInUser[])
+int userLogin(struct Users loggedInUser[])
 {
   char loginInput[20];
   char passwordInput[20];
@@ -1390,10 +1356,10 @@ void userLogin(struct Users loggedInUser[])
   printf("Please enter your Password: ");
   getPasswordInput(passwordInput, sizeof(passwordInput));
 
-  FILE *file = fopen("data/registered_users.bin", "rb");
+  FILE *file = fopen("registered_users.bin", "rb");
   if (file == NULL) {
     printf("Error while opening user data file.\n");
-    return; /* Login failed */
+    return -1; /* Login failed */
   }
 
   struct Users user;
@@ -1401,9 +1367,9 @@ void userLogin(struct Users loggedInUser[])
 
   while (fread(&user, sizeof(struct Users), 1, file)) {
     if ((strcmp(loginInput, user.username) == 0 ||
-         strcmp(loginInput, user.number) == 0 ||
-         strcmp(loginInput, user.email) == 0) &&
-        strcmp(passwordInput, user.password) == 0) {
+      strcmp(loginInput, user.number) == 0 ||
+      strcmp(loginInput, user.email) == 0) &&
+      strcmp(passwordInput, user.password) == 0) {
       found = 1;
       *loggedInUser = user; /* Copy user data to the loggedInUser pointer */
       break;
@@ -1425,7 +1391,8 @@ void userLogin(struct Users loggedInUser[])
     flushInputBuffer();
 
     if (strcmp(choice, "yes") == 0 || strcmp(choice, "Yes") == 0 ||
-        strcmp(choice, "YES") == 0)
+      strcmp(choice, "YES") == 0)
       userLogin(loggedInUser);
   }
+  return 0;
 }
